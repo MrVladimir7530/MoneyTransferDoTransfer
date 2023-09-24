@@ -12,53 +12,49 @@ import java.sql.*;
 
 public class ClientDao extends Util {
 
-    Connection connection;
     Logger logger;
 
     public ClientDao() throws SQLException {
-        this.connection = getConnection();
         this.logger  = LoggerFactory.getLogger(ClientDao.class);
     }
 
     public PaymentsResult getResultTransfer(long fromPersonId, long toPersonId, BigDecimal money) throws SQLException {
-        try {
+        try (Connection connection = Util.getConnection()){
             logger.info("transaction begin");
             connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
             connection.setAutoCommit(false);
-            if (getMoney(fromPersonId).compareTo(money) >= 0) {
-                boolean resultUpdate = getResultUpdate(fromPersonId, toPersonId, money);
+            if (getMoney(fromPersonId, connection).compareTo(money) >= 0) {
+                boolean resultUpdate = getResultUpdate(fromPersonId, toPersonId, money, connection);
                 int status = 400;
-                String accountFrom = getAccount(fromPersonId);
-                String accountTo = getAccount(toPersonId);
+                String accountFrom = getAccount(fromPersonId, connection);
+                String accountTo = getAccount(toPersonId, connection);
                 if (resultUpdate) {
                     status = 200;
                 }
                 PaymentsResult paymentsResult = new PaymentsResult(money, status, accountFrom, accountTo);
-                addPaymentHistory(paymentsResult);
+                addPaymentHistory(paymentsResult, connection);
                 connection.commit();
                 return new PaymentsResult(paymentsResult.getAmount(), paymentsResult.getStatus(), paymentsResult.getAccount_from(), paymentsResult.getAccount_to());
 
 
             } else {
                 connection.rollback();
-                String accountFrom = getAccount(fromPersonId);
-                String accountTo = getAccount(toPersonId);
+                String accountFrom = getAccount(fromPersonId, connection);
+                String accountTo = getAccount(toPersonId, connection);
                 int status = 406;
                 String description = "Недостаточно денег";
                 PaymentsResult paymentsResult = new PaymentsResult(money, status, accountFrom, accountTo, description);
                 connection.setAutoCommit(true);
-                addPaymentHistoryWithDescription(paymentsResult);
+                addPaymentHistoryWithDescription(paymentsResult, connection);
                 return new PaymentsResult(paymentsResult.getAmount(), paymentsResult.getStatus(), paymentsResult.getAccount_from(), paymentsResult.getAccount_to(), paymentsResult.getDescription());
             }
 
         } catch (Exception e) {
-            connection.rollback();
-            connection.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
             throw new SQLException();
         }
     }
 
-    private BigDecimal getMoney(long fromPersonId) {
+    private BigDecimal getMoney(long fromPersonId, Connection connection) {
         PreparedStatement preparedStatement = null;
 
         String SQL = "SELECT * FROM public.\"account\"" +
@@ -80,7 +76,7 @@ public class ClientDao extends Util {
         throw new RuntimeException();
     }
 
-    private boolean getResultUpdate(long fromPersonId, long toPersonId, BigDecimal money) {
+    private boolean getResultUpdate(long fromPersonId, long toPersonId, BigDecimal money, Connection connection) {
         logger.info("update amount from account");
         PreparedStatement preparedStatementFrom = null;
         PreparedStatement preparedStatementTo = null;
@@ -110,7 +106,7 @@ public class ClientDao extends Util {
         }
     }
 
-    private String getAccount(long PersonId) {
+    private String getAccount(long PersonId, Connection connection) {
         logger.info("get person by id");
         PreparedStatement preparedStatement = null;
 
@@ -133,7 +129,7 @@ public class ClientDao extends Util {
         throw new RuntimeException();
     }
 
-    private void addPaymentHistory(PaymentsResult paymentsResult) {
+    private void addPaymentHistory(PaymentsResult paymentsResult, Connection connection) {
         logger.info("entry to the history");
         PreparedStatement preparedStatement = null;
 
@@ -152,7 +148,7 @@ public class ClientDao extends Util {
         }
     }
 
-    private void addPaymentHistoryWithDescription(PaymentsResult paymentsResult) {
+    private void addPaymentHistoryWithDescription(PaymentsResult paymentsResult, Connection connection) {
         logger.info("entry to the history with unlucky");
         PreparedStatement preparedStatement = null;
 
